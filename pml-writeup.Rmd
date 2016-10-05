@@ -1,0 +1,161 @@
+---
+title: "Practical Machine Learing - Prediction Assignment Writeup"
+author: "Sathya"
+date: "October 4, 2016"
+output: html_document
+---
+
+##Synopsis:
+
+Jawbone Up, Nike FuelBand, and Fitbit are devices used to collect a large amount of data about personal activity relatively inexpensively. Most of the people regularly quantify how much of a particular activity they do, and rarely quantify how well they do it. Using the above mentioned devices,people take measurements about themselves regularly to improve their health, or to find patterns in their behavior. In this project, our goal is to use the data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants and predict the manner in which the did the exercise. This is quantified by the 'classe' variable in the training data set. 
+
+##Downloading the data set:
+
+The training dataset is available in the link: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv 
+
+The testing dataset is available in the link:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+Now, let's download both the dataset and use the same for building and testing the model.
+
+```{r download,cache=TRUE}
+##required libraries
+suppressPackageStartupMessages(library(caret))
+##download files
+set.seed(12345)
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","testing.csv")
+training <- read.csv("training.csv",na.strings = c("NA","#DIV/0!",""))
+testing <- read.csv("testing.csv",na.strings = c("NA","#DIV/0!",""))
+dim(training)
+dim(testing)
+```
+
+
+##Cleaning the datasets:
+
+Before cleaning the datasets, let's first check the column names of the datasets.
+
+```{r colnames,eval=FALSE}
+names_train <- colnames(training)
+names_train
+names_test <- colnames(testing)
+names_test
+```
+
+On seeing the column names of both the datasets(the column names are not shown here), we find that the first 7 columns are unnecessary for our prediction. So we can remove those columns and also we find the final column in training and testing dataset varies(i.e) the column name is 'classe' in the training dataset and 'problem_id' in the testing dataset. We also can remove all the columns which have NAs in them. Lets do the cleaning of the datasets now.
+
+```{r cleaning}
+##find the columns which has NAs in it
+na_index <- NULL
+for(i in 1:dim(training)[2])
+{
+  ifelse(is.na(training[,i]),na_index <- c(na_index,i),0)
+}
+##Now, remove the first 7 columns and the columns which has NAs in both testing and training sets
+nondrops <- NULL
+nondrops <- c(nondrops,names(training[,-c(1:7,na_index)]))
+final_train <- training[,names(training)%in% nondrops]
+names(final_train)
+nondrops <- NULL
+nondrops <- c(nondrops,names(testing[,-c(1:7,na_index)]))
+final_test <- testing[,names(testing)%in% nondrops]
+names(final_test)
+```
+
+Now, let's remove the covariates which have zero variability.
+
+```{r nzv}
+suppressPackageStartupMessages(library(caret))
+nzv <- nearZeroVar(final_train,saveMetrics = TRUE)
+nzv
+```
+
+There are no varaiables with zero variability. So, we can proceed with the dataset as such without eliminating any columns further.
+
+##Cross-validation datasets:
+
+For cross-validation, let's further partition our training dataset into two sets: training and testing sets to build few models and select the best model among them.
+
+```{r partition}
+inTrain <- createDataPartition(final_train$classe,p=0.6,list=FALSE)
+cv_training <- final_train[inTrain,]
+cv_testing <- final_train[-inTrain,]
+dim(cv_training)
+dim(cv_testing)
+```
+
+##Prediction Algorithm 1 : Decision Trees
+
+Now let's start the building of various models. First let's do with the decision trees.
+
+```{r dtrees}
+suppressPackageStartupMessages(library(rattle))
+suppressPackageStartupMessages(library(rpart))
+suppressPackageStartupMessages(library(rpart.plot))
+modfit1 <- rpart(classe~.,data=cv_training,method="class")
+fancyRpartPlot(modfit1)
+```
+
+Now using this built model, lets predict for the testing set and check the accuracy of this model.
+
+```{r pred1}
+prediction1 <- predict(modfit1,cv_testing,type="class")
+acc1 <- confusionMatrix(prediction1,cv_testing$classe)
+acc1
+```
+
+From the results, we have got an accuracy of 73.27%.
+
+##Prediction Algorithm 2 - Random Forests:
+
+Now lets build a model using Random Forests.
+
+```{r rf}
+suppressPackageStartupMessages(library(randomForest))
+modfit2 <- randomForest(classe~.,data=cv_training)
+prediction2 <- predict(modfit2,cv_testing,type="class")
+acc2 <- confusionMatrix(prediction2,cv_testing$classe)
+acc2
+```
+
+From the results, we see that we have got an accuracy of 99.29%.
+
+```{r rfplot}
+plot(modfit2)
+```
+
+##Prediction Algorithm 3 - Generalised Boosting Regression:
+
+Now lets build a model using Generalised Boosting Regression.
+```{r dt,cache=TRUE,suppressPackageStartupMessages=TRUE}
+fitControl <- trainControl(method = "repeatedcv",number = 5,repeats = 1)
+modfit3 <- train(classe~.,data=cv_training,method="gbm",trControl=fitControl,verbose=FALSE)
+prediction3 <- predict(modfit3,newdata=cv_testing)
+acc3 <- confusionMatrix(prediction3,cv_testing$classe)
+acc3
+```
+
+From the results, we find an accuracy of 96.29%.
+
+##Predicting test data with the best method:
+
+From the above three methods, we find that the Random Forests model gives a higher accuracy than the other two methods(decision trees and generalized boosting method). So with the random forests model, lets predict the original test dataset.
+
+```{r finalpredict}
+predictresult <- predict(modfit2,newdata=final_test)
+predictresult
+```
+
+##Conclusion:
+
+-Thus, we tried 3 methods(decision trees, random forests and generalized boosting method) for prediction.  
+-We found that the random forests gave a higher accuracy for the cross-validated test dataset.  
+-The out-of-sample error for the random forests method is = 100-99.29 = 0.71%.
+
+
+
+
+
+
+
